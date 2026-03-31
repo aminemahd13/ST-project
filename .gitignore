@@ -1,1 +1,12 @@
 context_file/
+report.aux
+report.bbl
+report.blg
+report.bst
+report.log
+report.out
+report.pdf
+report.synctex.gz
+report.toc
+report.xdv
+report.*
