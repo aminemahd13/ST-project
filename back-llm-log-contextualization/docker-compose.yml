@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16
+    container_name: smart-cities-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-grid_logs}
+      POSTGRES_USER: ${POSTGRES_USER:-grid_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-grid_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-grid_user} -d ${POSTGRES_DB:-grid_logs}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: smart-cities-ollama
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: smart-cities-ollama-pull
+    profiles: ["ollama"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama"]
+    command: ["pull", "${GRID_APP_OLLAMA_MODEL:-llama3.2:1b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-cities-backend
+    ports:
+      - "8000:8000"
+    environment:
+      GRID_APP_DATABASE_URL: ${GRID_APP_DATABASE_URL_DOCKER:-postgresql+psycopg://grid_user:grid_password@db:5432/grid_logs}
+      GRID_APP_STORAGE_DIR: /app/storage
+      GRID_APP_RAG_SEED_DIR: /app/context_logs
+      GRID_APP_HF_TOKEN: ${GRID_APP_HF_TOKEN:-}
+      GRID_APP_HF_MODEL: ${GRID_APP_HF_MODEL:-katanemo/Arch-Router-1.5B:hf-inference}
+      GRID_APP_LLM_PROVIDER: ${GRID_APP_LLM_PROVIDER:-auto}
+      GRID_APP_OLLAMA_BASE_URL: ${GRID_APP_OLLAMA_BASE_URL_DOCKER:-http://ollama:11434}
+      GRID_APP_OLLAMA_MODEL: ${GRID_APP_OLLAMA_MODEL:-llama3.2:1b}
+      GRID_APP_LLM_TIMEOUT_SECONDS: ${GRID_APP_LLM_TIMEOUT_SECONDS:-20}
+      GRID_APP_MAX_UPLOAD_SIZE_BYTES: ${GRID_APP_MAX_UPLOAD_SIZE_BYTES:-26214400}
+      GRID_APP_RATE_LIMIT_REQUESTS_PER_MINUTE: ${GRID_APP_RATE_LIMIT_REQUESTS_PER_MINUTE:-60}
+    volumes:
+      - api_storage:/app/storage
+      - ../context_file/logs_document:/app/context_logs:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  api_storage:
+  ollama_data:
